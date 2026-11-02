@@ -1,0 +1,82 @@
+[
+  {
+    "key": "sena_news",
+    "username": "sena_news",
+    "title": "سنا",
+    "kind": "wire",
+    "verification": "reported",
+    "credibility_prior": 80
+  },
+  {
+    "key": "den_ir",
+    "username": "den_ir",
+    "title": "دنیای اقتصاد",
+    "kind": "media",
+    "verification": "reported",
+    "credibility_prior": 74
+  },
+  {
+    "key": "feghtesad",
+    "username": "feghtesad",
+    "title": "فردای اقتصاد / بورسان",
+    "kind": "media",
+    "verification": "reported",
+    "credibility_prior": 72
+  },
+  {
+    "key": "donyayebourse_com",
+    "username": "donyayebourse_com",
+    "title": "دنیای بورس",
+    "kind": "media",
+    "verification": "reported",
+    "credibility_prior": 70
+  },
+  {
+    "key": "ecoiran_webtv",
+    "username": "ecoiran_webtv",
+    "title": "اکوایران",
+    "kind": "media",
+    "verification": "reported",
+    "credibility_prior": 70
+  },
+  {
+    "key": "Bourse24ir",
+    "username": "Bourse24ir",
+    "title": "بورس۲۴",
+    "kind": "media",
+    "verification": "reported",
+    "credibility_prior": 62
+  },
+  {
+    "key": "madresebourse",
+    "username": "madresebourse",
+    "title": "مدرسه بورس",
+    "kind": "independent",
+    "verification": "unconfirmed",
+    "credibility_prior": 40
+  },
+  {
+    "key": "tahlilsahm66",
+    "username": "tahlilsahm66",
+    "title": "تحلیل سهم",
+    "kind": "independent",
+    "verification": "unconfirmed",
+    "credibility_prior": 38
+  },
+  {
+    "key": "agahcom",
+    "username": "agahcom",
+    "title": "گروه آگاه",
+    "kind": "broker",
+    "verification": "reported",
+    "credibility_prior": 55
+  },
+  {
+    "key": "mofidsecurities",
+    "username": "mofidsecurities",
+    "title": "کارگزاری مفید",
+    "kind": "broker",
+    "verification": "reported",
+    "credibility_prior": 55
+  }
+]

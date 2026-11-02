@@ -1,0 +1,195 @@
+{
+  "started_at": "2026-11-02T06:25:18.023787+00:00",
+  "probes": [
+    {
+      "source_key": "rahavard_stocks",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 737,
+      "message": "ok"
+    },
+    {
+      "source_key": "rahavard_etf-funds",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 263,
+      "message": "ok"
+    },
+    {
+      "source_key": "rahavard_options",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 406,
+      "message": "ok"
+    },
+    {
+      "source_key": "rahavard_futures",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 1,
+      "message": "ok"
+    },
+    {
+      "source_key": "rahavard_funds",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 251,
+      "message": "ok"
+    },
+    {
+      "source_key": "rahavard_bonds",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 13,
+      "message": "ok"
+    },
+    {
+      "source_key": "rahavard_commodities",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 31,
+      "message": "ok"
+    },
+    {
+      "source_key": "rahavard_indexes",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 107,
+      "message": "ok"
+    },
+    {
+      "source_key": "tsetmc_market",
+      "status": "blocked",
+      "http_status": null,
+      "seen": 0,
+      "message": "اتصال از این محیط تایم‌اوت شد؛ داده این منبع نوشته نشد"
+    },
+    {
+      "source_key": "codal_home",
+      "status": "blocked",
+      "http_status": null,
+      "seen": 0,
+      "message": "اتصال از این محیط تایم‌اوت شد؛ داده این منبع نوشته نشد"
+    },
+    {
+      "source_key": "fipiran_home",
+      "status": "blocked",
+      "http_status": null,
+      "seen": 0,
+      "message": "اتصال از این محیط تایم‌اوت شد؛ داده این منبع نوشته نشد"
+    },
+    {
+      "source_key": "donya_rss",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 30,
+      "message": "ok",
+      "items_new": 30
+    },
+    {
+      "source_key": "farda_rss",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 30,
+      "message": "ok",
+      "items_new": 30
+    },
+    {
+      "source_key": "bourse24_home",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 26,
+      "message": "ok",
+      "items_new": 26
+    },
+    {
+      "source_key": "tg_sena_news",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 14,
+      "message": "ok",
+      "items_new": 14
+    },
+    {
+      "source_key": "tg_den_ir",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 19,
+      "message": "ok",
+      "items_new": 19
+    },
+    {
+      "source_key": "tg_feghtesad",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 19,
+      "message": "ok",
+      "items_new": 19
+    },
+    {
+      "source_key": "tg_donyayebourse_com",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 20,
+      "message": "ok",
+      "items_new": 20
+    },
+    {
+      "source_key": "tg_ecoiran_webtv",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 20,
+      "message": "ok",
+      "items_new": 20
+    },
+    {
+      "source_key": "tg_Bourse24ir",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 20,
+      "message": "ok",
+      "items_new": 20
+    },
+    {
+      "source_key": "tg_madresebourse",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 20,
+      "message": "ok",
+      "items_new": 20
+    },
+    {
+      "source_key": "tg_tahlilsahm66",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 20,
+      "message": "ok",
+      "items_new": 20
+    },
+    {
+      "source_key": "tg_agahcom",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 20,
+      "message": "ok",
+      "items_new": 20
+    },
+    {
+      "source_key": "tg_mofidsecurities",
+      "status": "ok",
+      "http_status": 200,
+      "seen": 19,
+      "message": "ok",
+      "items_new": 19
+    }
+  ],
+  "new_items": 277,
+  "instruments": 1809,
+  "enriched": 10,
+  "entity_links": 180,
+  "impacts": 180,
+  "opportunities": 90,
+  "predictions": 3,
+  "evaluations": 0,
+  "finished_at": "2026-11-02T06:26:32.389074+00:00"
+}
