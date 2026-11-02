@@ -1,0 +1,283 @@
+"""بانک اولیه منابع. سطح A/B/C در این فهرست پیشین است، نه رتبه عملکرد."""
+
+from __future__ import annotations
+
+PRIOR = "پیشین بر اساس نوع منبع؛ تا پیش از نتیجه ثبت‌شده، رتبه عملکرد محسوب نمی‌شود."
+
+
+def _official(key: str, name: str, url: str, specialty: str) -> dict:
+    return {
+        "source_key": key,
+        "name": name,
+        "url": url,
+        "group_name": "official",
+        "specialty": specialty,
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+        "notes": "منبع رسمی معرفی‌شده. دسترسی واقعی جداگانه در source_access ثبت می‌شود.",
+    }
+
+
+def _media(key: str, name: str, url: str, specialty: str, level: str = "B") -> dict:
+    return {
+        "source_key": key,
+        "name": name,
+        "url": url,
+        "group_name": "media",
+        "specialty": specialty,
+        "prior_level": level,
+        "prior_basis": PRIOR,
+    }
+
+
+def _channel(key: str, name: str, handle: str, group: str, level: str, specialty: str) -> dict:
+    return {
+        "source_key": key,
+        "name": name,
+        "handle": handle,
+        "url": f"https://t.me/s/{handle}",
+        "group_name": group,
+        "specialty": specialty,
+        "prior_level": level,
+        "prior_basis": PRIOR,
+        "notes": "فقط پیش‌نمایش عمومی t.me/s بررسی می‌شود. این مسیر تاریخ کامل کانال و گروه‌های خصوصی را نمی‌دهد.",
+    }
+
+
+SEED_SOURCES: list[dict] = [
+    _official("codal", "کدال", "https://codal.ir", "اطلاعیه‌ها و صورت‌های مالی"),
+    _official("tsetmc", "TSETMC", "https://www.tsetmc.com", "داده معاملاتی بورس و فرابورس"),
+    _official("seo", "سازمان بورس", "https://www.seo.ir", "مقررات و اخبار ناظر"),
+    _official("tse", "بورس تهران", "https://www.tse.ir", "بازار سهام"),
+    _official("ifb", "فرابورس", "https://www.ifb.ir", "بازار فرابورس"),
+    _official("ime", "بورس کالای ایران", "https://www.ime.co.ir", "کالا، گواهی سپرده، آتی"),
+    _official("irenex", "بورس انرژی", "https://www.irenex.ir", "انرژی"),
+    _official("fipiran", "مرکز پردازش اطلاعات مالی", "https://www.fipiran.com", "صندوق و داده مالی"),
+    _official("csdiran", "سپرده‌گذاری مرکزی", "https://www.csdiran.ir", "سپرده‌گذاری و تسویه"),
+    _official("cbi", "بانک مرکزی", "https://www.cbi.ir", "پول و ارز"),
+    _official("amar", "مرکز آمار ایران", "https://www.amar.org.ir", "آمار رسمی"),
+    _media("fardayeeghtesad", "فردای اقتصاد", "https://fardayeeghtesad.com", "رسانه اقتصادی", "B"),
+    _media("bourseon", "بورسان", "https://bourseon.com", "رسانه بورسی", "B"),
+    _media("donya", "دنیای اقتصاد", "https://donya-e-eqtesad.com", "روزنامه اقتصادی", "B"),
+    _media("eghtesadonline", "اقتصاد آنلاین", "https://www.eghtesadonline.com", "رسانه اقتصادی", "B"),
+    _media("boursenews", "بورس نیوز", "https://www.boursenews.ir", "رسانه بورسی", "B"),
+    _media("sena", "سنا", "https://www.sena.ir", "پایگاه خبری بازار سرمایه", "B"),
+    _media("nabzebourse", "نبض بورس", "https://nabzebourse.com", "رسانه بورسی", "B"),
+    _media("bourse24", "بورس ۲۴", "https://www.bourse24.ir", "رسانه بورسی", "B"),
+    _media("tejaratnews", "تجارت نیوز", "https://tejaratnews.com", "رسانه اقتصادی", "B"),
+    _media("isna", "ایسنا", "https://www.isna.ir", "خبرگزاری", "B"),
+    _media("tasnim", "تسنیم", "https://www.tasnimnews.com", "خبرگزاری", "B"),
+    _media("irna", "ایرنا", "https://www.irna.ir", "خبرگزاری", "B"),
+    _media("shana", "شانا", "https://www.shana.ir", "اخبار نفت و انرژی", "B"),
+    _media("ikcopress", "ایکوپرس", "https://ikcopress.ir", "اخبار ایران‌خودرو", "C"),
+    _channel("tg-feghtesad", "فردای اقتصاد", "feghtesad", "analyst", "B", "رسانه اقتصادی"),
+    _channel("tg-kiancasts", "بورسان", "kiancasts", "analyst", "B", "تحلیل بازار"),
+    _channel("tg-validhelalat", "تحلیل کاربردی هلالات", "validhelalat", "analyst", "B", "تحلیل"),
+    _channel("tg-behnamsamadi", "بهنام صمدی", "BehnamSamadi_ir", "analyst", "B", "تحلیل"),
+    _channel("tg-twitter-bourse", "توییتر بورس", "twitter_bourse", "analyst", "B", "بازنشر فضای اجتماعی"),
+    _channel("tg-rahavard", "ره‌آورد", "rahavard365", "analyst", "B", "داده و تحلیل"),
+    _channel("tg-cer", "تحلیلگر حرفه‌ای", "CER_Analyst", "analyst", "B", "تحلیل"),
+    _channel("tg-stockark", "صندوقچه بازار", "StockArk", "analyst", "B", "تحلیل"),
+    _channel("tg-tahani", "مهدی طحانی", "mehditahani", "analyst", "B", "تحلیل"),
+    _channel("tg-sina", "سینا رهبرشهلان", "sinarahbarshahlan", "analyst", "B", "تحلیل"),
+    _channel("tg-fahm", "فهم بازار", "Fahm_e_Bazar", "analyst", "B", "تحلیل"),
+    _channel("tg-bourse99", "BOURSE99", "bourse99", "analyst", "B", "تحلیل"),
+    _channel("tg-mr-economy", "آقای اقتصاد", "Mr_Economy", "analyst", "B", "اقتصاد"),
+    _channel("tg-khaleghi", "پرویز خالقی", "permanet5160", "analyst", "B", "تحلیل"),
+    _channel("tg-parsis", "پارسیس تحلیل", "parsistahlil", "analyst", "B", "تحلیل"),
+    _channel("tg-betasahm", "بتا سهم", "betasahm1", "analyst", "B", "تحلیل"),
+    _channel("tg-codal360", "کدال ۳۶۰", "Codal360_ir", "analyst", "B", "بازنشر کدال"),
+    _channel("tg-codalscan", "کدال اسکن", "codalscan", "analyst", "B", "بازنشر کدال"),
+    _channel("tg-bourse24", "بورس ۲۴", "bourse24ir", "analyst", "B", "خبر بورسی"),
+    _channel("tg-majame", "اخبار شرکت‌ها و مجامع", "akhbar_majame", "analyst", "B", "مجامع و شرکت‌ها"),
+    _channel("tg-shomal", "معامله‌گران بورس شمال", "bourse_shomal", "fringe", "C", "سرنخ و شایعه"),
+    _channel("tg-aqay", "آقای تحلیلگر", "Aqay_Tahlilgar", "fringe", "C", "سرنخ و شایعه"),
+    _channel("tg-piknik", "پیکنیک تحلیل", "PiknikAnalyst", "fringe", "C", "سرنخ و شایعه"),
+    _channel("tg-signal743", "تحلیل صلواتی", "signal743", "fringe", "C", "سرنخ و شایعه"),
+    _channel("tg-hybrid", "تحلیل هیبریدی بازار سرمایه", "hybridanalysis", "fringe", "C", "سرنخ و شایعه"),
+    _channel("tg-iboursem", "الیونگر", "iBourseM", "fringe", "C", "سرنخ و شایعه"),
+    _channel("tg-kahnamoue", "کهنمویی", "kahnamoue", "fringe", "C", "سرنخ و شایعه"),
+    _channel("tg-bahram", "بهرام بورس", "burs_bahram", "fringe", "C", "سرنخ و شایعه"),
+    {
+        "source_key": "reuters",
+        "name": "Reuters",
+        "url": "https://www.reuters.com",
+        "group_name": "international",
+        "specialty": "خبر بین‌المللی",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+        "notes": "بخش زیادی از محتوا ممکن است پشت دیوار پرداخت باشد.",
+    },
+    {
+        "source_key": "bloomberg",
+        "name": "Bloomberg",
+        "url": "https://www.bloomberg.com",
+        "group_name": "international",
+        "specialty": "خبر و داده بازار جهانی",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "ft",
+        "name": "Financial Times",
+        "url": "https://www.ft.com",
+        "group_name": "international",
+        "specialty": "خبر اقتصادی",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "platts",
+        "name": "S&P Global Commodity Insights (Platts)",
+        "url": "https://www.spglobal.com/commodityinsights/",
+        "group_name": "international",
+        "specialty": "قیمت انرژی و پتروشیمی",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "icis",
+        "name": "ICIS",
+        "url": "https://www.icis.com",
+        "group_name": "international",
+        "specialty": "پتروشیمی",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "lme",
+        "name": "LME",
+        "url": "https://www.lme.com",
+        "group_name": "international",
+        "specialty": "فلزات",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "fastmarkets",
+        "name": "Fastmarkets",
+        "url": "https://www.fastmarkets.com",
+        "group_name": "international",
+        "specialty": "کالا",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "steelorbis",
+        "name": "SteelOrbis",
+        "url": "https://www.steelorbis.com",
+        "group_name": "international",
+        "specialty": "فولاد",
+        "prior_level": "B",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "kitco",
+        "name": "Kitco",
+        "url": "https://www.kitco.com",
+        "group_name": "international",
+        "specialty": "طلا",
+        "prior_level": "B",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "wgc",
+        "name": "World Gold Council",
+        "url": "https://www.gold.org",
+        "group_name": "international",
+        "specialty": "طلا",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "fao",
+        "name": "FAO",
+        "url": "https://www.fao.org",
+        "group_name": "international",
+        "specialty": "کشاورزی و غذا",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "usda",
+        "name": "USDA",
+        "url": "https://www.usda.gov",
+        "group_name": "international",
+        "specialty": "کشاورزی",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "fed",
+        "name": "Federal Reserve",
+        "url": "https://www.federalreserve.gov",
+        "group_name": "international",
+        "specialty": "سیاست پولی آمریکا",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "ecb",
+        "name": "European Central Bank",
+        "url": "https://www.ecb.europa.eu",
+        "group_name": "international",
+        "specialty": "سیاست پولی اروپا",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "unctad",
+        "name": "UNCTAD",
+        "url": "https://unctad.org",
+        "group_name": "international",
+        "specialty": "تجارت جهانی",
+        "prior_level": "A",
+        "prior_basis": PRIOR,
+    },
+    {
+        "source_key": "tgju",
+        "name": "شبکه اطلاع‌رسانی طلا و ارز",
+        "url": "https://www.tgju.org",
+        "group_name": "discovered",
+        "specialty": "ارز، طلا، کالا و نماگرهایی که خودش منتشر می‌کند",
+        "prior_level": "B",
+        "prior_basis": PRIOR,
+        "notes": "جایگزین TSETMC نیست. هر عدد با کلید و زمان خام همان منبع ذخیره می‌شود.",
+    },
+    {
+        "source_key": "shakhesban",
+        "name": "شاخص‌بان",
+        "url": "https://www.shakhesban.com",
+        "group_name": "discovered",
+        "specialty": "تابلوی عمومی سهام، صندوق، اوراق و آتی",
+        "prior_level": "B",
+        "prior_basis": PRIOR,
+        "notes": "نمای عمومی سایت در این محیط فقط بخشی از تابلو را برمی‌گرداند و فهرست کامل نمادها نیست.",
+    },
+]
+
+RSS_FEEDS = (
+    ("isna", "https://www.isna.ir/rss", True),
+    ("irna", "https://www.irna.ir/rss", True),
+    ("eghtesadonline", "https://www.eghtesadonline.com/rss", True),
+    ("donya", "https://donya-e-eqtesad.com/rss", True),
+    ("tejaratnews", "https://tejaratnews.com/feed", True),
+    ("shana", "https://www.shana.ir/rss", False),
+    ("bourse24", "https://www.bourse24.ir/rss", False),
+)
+
+TELEGRAM_HANDLES = tuple(
+    source["handle"]
+    for source in SEED_SOURCES
+    if source["group_name"] in {"analyst", "fringe"} and source.get("handle")
+)
+
+SHAKHESBAN_BOARDS = (
+    ("/markets/all", "stock_board"),
+    ("/markets/fund", "fund_board"),
+    ("/markets/future", "future_board"),
+    ("/markets/bond", "bond_board"),
+    ("/markets/option", "option_board"),
+)
+
+IME_PAGES = ("/ime/sandoq", "/ime/gavahi", "/ime/option", "/ime/future", "/ime/salaf")
