@@ -4,3 +4,5 @@ __pycache__/
 data/*.sqlite
 data/*.sqlite-*
 data/*.sqlite-journal
+data/*.lock
+data/cron.log

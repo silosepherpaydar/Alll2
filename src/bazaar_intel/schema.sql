@@ -389,3 +389,72 @@ CREATE TABLE IF NOT EXISTS capability_status (
 CREATE INDEX IF NOT EXISTS idx_news_fingerprint ON news_items (fingerprint);
 CREATE INDEX IF NOT EXISTS idx_quotes_instrument ON quotes (instrument_id, observed_at);
 CREATE INDEX IF NOT EXISTS idx_predictions_horizon ON predictions (horizon_end);
+
+CREATE TABLE IF NOT EXISTS fetch_log (
+  id INTEGER PRIMARY KEY,
+  source_key TEXT NOT NULL,
+  channel TEXT NOT NULL CHECK (channel IN ('direct', 'relay')),
+  url TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  finished_at TEXT NOT NULL,
+  ok INTEGER NOT NULL,
+  status_code INTEGER,
+  error TEXT,
+  records INTEGER NOT NULL DEFAULT 0,
+  notes TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fetch_log_source ON fetch_log (source_key, id);
+
+CREATE TABLE IF NOT EXISTS telegram_posts (
+  id INTEGER PRIMARY KEY,
+  handle TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  url TEXT,
+  published_at TEXT,
+  published_at_raw TEXT,
+  text TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  page_url TEXT NOT NULL,
+  UNIQUE (handle, external_id)
+);
+
+CREATE TABLE IF NOT EXISTS discovered_channels (
+  handle TEXT PRIMARY KEY,
+  discovered_from TEXT NOT NULL,
+  discovered_at TEXT NOT NULL,
+  preview_ok INTEGER,
+  preview_error TEXT,
+  post_count INTEGER NOT NULL DEFAULT 0,
+  notes TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS fundamental_observations (
+  id INTEGER PRIMARY KEY,
+  instrument_id INTEGER NOT NULL REFERENCES instruments(id),
+  observed_at_raw TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  value_raw TEXT NOT NULL,
+  source_label TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  UNIQUE (instrument_id, metric, value_raw, source_label, observed_at_raw)
+);
+
+CREATE TABLE IF NOT EXISTS news_impacts (
+  id INTEGER PRIMARY KEY,
+  news_id INTEGER NOT NULL REFERENCES news_items(id),
+  instrument_id INTEGER NOT NULL REFERENCES instruments(id),
+  computed_at TEXT NOT NULL,
+  published_at TEXT,
+  price_before TEXT,
+  price_after TEXT,
+  price_change_pct TEXT,
+  volume_before TEXT,
+  volume_after TEXT,
+  quote_before_id INTEGER,
+  quote_after_id INTEGER,
+  earnings_effect TEXT NOT NULL,
+  price_reflection TEXT NOT NULL,
+  missing_data TEXT NOT NULL,
+  UNIQUE (news_id, instrument_id)
+);

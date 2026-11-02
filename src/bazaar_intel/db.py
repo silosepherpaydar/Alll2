@@ -21,7 +21,7 @@ def init_db(path: Path | None = None) -> sqlite3.Connection:
     conn = connect(path)
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     conn.execute(
-        "INSERT INTO schema_meta(key, value) VALUES('schema_version', '1') "
+        "INSERT INTO schema_meta(key, value) VALUES('schema_version', '2') "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
     )
     seed_sources(conn)
@@ -91,6 +91,40 @@ def next_public_id(conn: sqlite3.Connection, name: str, prefix: str) -> str:
 def source_id(conn: sqlite3.Connection, source_key: str) -> int | None:
     row = conn.execute("SELECT id FROM sources WHERE source_key = ?", (source_key,)).fetchone()
     return None if row is None else int(row["id"])
+
+
+def log_fetch(
+    conn: sqlite3.Connection,
+    *,
+    source_key: str,
+    channel: str,
+    url: str,
+    started_at: str,
+    ok: bool,
+    status_code: int | None,
+    error: str | None,
+    records: int,
+    notes: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO fetch_log(
+          source_key, channel, url, started_at, finished_at, ok, status_code, error, records, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            source_key,
+            channel,
+            url,
+            started_at,
+            iso_utc(),
+            1 if ok else 0,
+            status_code,
+            error,
+            records,
+            notes,
+        ),
+    )
 
 
 def set_capability(conn: sqlite3.Connection, capability: str, state: str, detail: str) -> None:

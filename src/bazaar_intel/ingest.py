@@ -307,10 +307,14 @@ def _parse_http_date(value: str) -> str | None:
 
 def ingest_all(conn: sqlite3.Connection) -> IngestReport:
     report = IngestReport()
+    from bazaar_intel.connectors import ingest_market_connections
+    from bazaar_intel.telegram_watch import ingest_telegram_history
+
+    ingest_market_connections(conn, report)
     _ingest_tgju(conn, report)
     _ingest_shakhesban(conn, report)
     _ingest_rss(conn, report)
-    _ingest_telegram(conn, report)
+    ingest_telegram_history(conn, report)
     conn.commit()
     return report
 
@@ -607,7 +611,13 @@ def verification_for(source: sqlite3.Row) -> str:
     return "single_specialist"
 
 
-def _insert_news(conn: sqlite3.Connection, source: sqlite3.Row, item: dict, verification: str) -> bool:
+def _insert_news(
+    conn: sqlite3.Connection,
+    source: sqlite3.Row,
+    item: dict,
+    verification: str,
+    extra_tokens: list[str] | None = None,
+) -> bool:
     body = item.get("body") or ""
     title = item["title"]
     digest = content_hash(f"{source['id']}|{title}|{body}")
@@ -658,7 +668,7 @@ def _insert_news(conn: sqlite3.Connection, source: sqlite3.Row, item: dict, veri
     )
     news_id = int(cur.lastrowid)
     seen = set()
-    for token in hashtags(f"{title} {body}"):
+    for token in [*hashtags(f"{title} {body}"), *(extra_tokens or [])]:
         if token in seen:
             continue
         seen.add(token)
@@ -709,6 +719,29 @@ def _upsert_instrument(conn: sqlite3.Connection, **fields) -> int:
         """,
         (fields["symbol"], fields["market"], fields["asset_class"]),
     ).fetchone()
+    if row is None and fields["market"] == "unspecified":
+        row = conn.execute(
+            """
+            SELECT id FROM instruments
+            WHERE symbol = ? AND asset_class = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (fields["symbol"], fields["asset_class"]),
+        ).fetchone()
+    if row is None and fields["market"] != "unspecified":
+        row = conn.execute(
+            """
+            SELECT id FROM instruments
+            WHERE symbol = ? AND asset_class = ? AND market = 'unspecified'
+            """,
+            (fields["symbol"], fields["asset_class"]),
+        ).fetchone()
+        if row is not None:
+            conn.execute(
+                "UPDATE instruments SET market = ?, venue = COALESCE(?, venue) WHERE id = ?",
+                (fields["market"], fields.get("venue"), row["id"]),
+            )
     if row:
         conn.execute(
             """
@@ -716,10 +749,18 @@ def _upsert_instrument(conn: sqlite3.Connection, **fields) -> int:
             SET last_seen_at = ?,
                 name = COALESCE(?, name),
                 venue = COALESCE(?, venue),
-                provider_key = COALESCE(?, provider_key)
+                provider_key = COALESCE(?, provider_key),
+                option_type = COALESCE(option_type, ?)
             WHERE id = ?
             """,
-            (now, fields.get("name"), fields.get("venue"), fields.get("provider_key"), row["id"]),
+            (
+                now,
+                fields.get("name"),
+                fields.get("venue"),
+                fields.get("provider_key"),
+                fields.get("option_type"),
+                row["id"],
+            ),
         )
         return int(row["id"])
     cur = conn.execute(

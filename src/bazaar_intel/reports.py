@@ -14,6 +14,7 @@ from bazaar_intel.timeutil import TEHRAN, is_trading_weekday, jalali_label, tehr
 
 CLASS_FA = {
     "official_confirmed": "تأییدشده رسمی",
+    "relayed_official": "عنوان رسمی از مسیر جایگزین؛ متن نامه خوانده نشده",
     "reputable_media": "گزارش رسانه معتبر",
     "multi_independent": "دارای چند منبع مستقل",
     "single_specialist": "دارای یک منبع تخصصی",
@@ -68,6 +69,8 @@ def build_report(conn: sqlite3.Connection, session_name: str) -> str:
         lines.extend(_preopen(conn, trading))
         lines.append("")
         lines.extend(_close(conn, trading))
+    lines.extend(["", "## پوشش بازار و آخرین دریافت", ""])
+    lines.extend(_coverage(conn))
     lines.extend(["", "## قابلیت‌های فعال و مسدود", ""])
     lines.extend(_capabilities(conn))
     lines.extend(["", "## دسترسی منابع", ""])
@@ -89,6 +92,7 @@ def _session_title(session_name: str) -> str:
         "preopen": "پیش از بازگشایی",
         "close": "پایان روز",
         "pilot": "آزمایشی؛ هر دو قالب در یک نوبت",
+        "phase2": "مرحله دوم؛ اتصال منابع و پوشش بازار",
     }.get(session_name, session_name)
 
 
@@ -107,7 +111,7 @@ def _preopen(conn: sqlite3.Connection, trading: bool) -> list[str]:
     lines += ["", "### بخش ۴. آپشن و گواهی سپرده", ""]
     lines += _derivatives(conn)
     lines += ["", "### بخش ۵. تقویم رویدادها", ""]
-    lines.append("مجمع، سررسید و عرضه اولیه از کدال، بورس تهران، فرابورس و بورس کالا خوانده نشد؛ آن نشانی‌ها در این محیط باز نشدند. تقویم این بخش خالی است.")
+    lines += _event_calendar(conn)
     lines += ["", "### بخش ۶. فهرست مراقبت", ""]
     lines += _watchlist(conn)
     return lines
@@ -125,6 +129,7 @@ def _close(conn: sqlite3.Connection, trading: bool) -> list[str]:
     lines += _opportunities(conn)
     lines += ["", "### بخش ۴. قیمت و حجم", ""]
     lines.append("حجم و ارزش فقط برای ردیف‌هایی آمده که خود جدول منبع آن را داشته است. ورود پول حقیقی و صف خرید از TSETMC خوانده نشد.")
+    lines += _impacts(conn)
     lines += _movers(conn)
     lines += ["", "### بخش ۵. آپشن و ابزار کالایی", ""]
     lines += _derivatives(conn)
@@ -499,6 +504,118 @@ def _summary(conn: sqlite3.Connection) -> list[str]:
         "ریسک اصلی این چرخه، کمبود داده رسمی است نه یک رویداد شرکتی مشخص.",
         "هیچ معامله‌ای پیشنهاد اجرایی نشده و تصمیمی برای خرید یا فروش گرفته نشده است.",
     ]
+
+
+def _event_calendar(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute(
+        """
+        SELECT n.title, n.published_at_raw, n.url, n.verification_class, i.symbol
+        FROM news_items n
+        LEFT JOIN news_mentions m ON m.news_id = n.id
+        LEFT JOIN instruments i ON i.id = m.instrument_id
+        WHERE n.verification_class IN ('relayed_official', 'official_confirmed')
+        ORDER BY COALESCE(n.published_at, n.fetched_at) DESC
+        LIMIT 8
+        """
+    ).fetchall()
+    if not rows:
+        return [
+            "مجمع، سررسید و عرضه اولیه از میزبان مستقیم کدال، بورس تهران، فرابورس و بورس کالا خوانده نشد و عنوان جایگزینی هم ذخیره نشده است."
+        ]
+    lines = [
+        "عنوان‌های زیر از پاسخ واقعی مسیر کدال آمده‌اند. اگر سطح «مسیر جایگزین» باشد، متن نامه از خود codal.ir دانلود نشده و تاریخ قطعی رویداد حساب نمی‌شود."
+    ]
+    seen = set()
+    for row in rows:
+        key = (row["title"], row["url"])
+        if key in seen:
+            continue
+        seen.add(key)
+        symbol = row["symbol"] or "نماد در عنوان جدا نیامده"
+        lines.append(f"- {symbol}: {row['title']} | {row['published_at_raw'] or 'زمان خام نیست'} | {row['url']}")
+    return lines
+
+
+def _coverage(conn: sqlite3.Connection) -> list[str]:
+    total = conn.execute("SELECT COUNT(*) AS n FROM instruments").fetchone()["n"]
+    lines = [f"ابزارهای ذخیره‌شده: {total}"]
+    for row in conn.execute(
+        "SELECT asset_class, COUNT(*) AS n FROM instruments GROUP BY asset_class ORDER BY n DESC"
+    ):
+        lines.append(f"- {row['asset_class']}: {row['n']}")
+    calls = conn.execute("SELECT COUNT(*) AS n FROM instruments WHERE option_type = 'call'").fetchone()["n"]
+    puts = conn.execute("SELECT COUNT(*) AS n FROM instruments WHERE option_type = 'put'").fetchone()["n"]
+    lines.append(f"اختیار خرید با پیشوند ط: {calls}. اختیار فروش با پیشوند ض: {puts}. بقیه اختیارها در پاسخ منبع پیشوند استاندارد نداشتند.")
+    lines.append("listing_complete برای این ردیف‌ها صفر است چون فهرست با فایل رسمی TSETMC تطبیق نشده است.")
+    lines.append("")
+    lines.append("پرحجم‌ترین دریافت موفق هر منبع:")
+    keys = [
+        row["source_key"]
+        for row in conn.execute("SELECT DISTINCT source_key FROM fetch_log WHERE ok = 1 ORDER BY source_key")
+    ]
+    if not keys:
+        lines.append("هنوز دریافت موفقی در fetch_log نیست.")
+    for key in keys:
+        row = conn.execute(
+            """
+            SELECT source_key, channel, finished_at, records, notes
+            FROM fetch_log
+            WHERE source_key = ? AND ok = 1
+            ORDER BY records DESC, id DESC
+            LIMIT 1
+            """,
+            (key,),
+        ).fetchone()
+        lines.append(
+            f"- {row['source_key']} / {row['channel']} / {row['records']} رکورد / {_tehran_time(row['finished_at'], None)}"
+        )
+        lines.append(f"  {row['notes']}")
+    lines.append("")
+    lines.append("آخرین خطای هر منبع:")
+    failures = conn.execute(
+        """
+        SELECT source_key, channel, finished_at, error, url
+        FROM fetch_log
+        WHERE ok = 0 AND id IN (SELECT MAX(id) FROM fetch_log WHERE ok = 0 GROUP BY source_key)
+        ORDER BY source_key
+        """
+    ).fetchall()
+    if not failures:
+        lines.append("خطای تازه‌ای ثبت نشده است.")
+    for row in failures:
+        lines.append(
+            f"- {row['source_key']} / {row['channel']} / {_tehran_time(row['finished_at'], None)} / {row['error'] or 'بدون متن خطا'}"
+        )
+        lines.append(f"  {row['url']}")
+    return lines
+
+
+def _impacts(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute(
+        """
+        SELECT i.symbol, n.title, p.price_before, p.price_after, p.price_change_pct,
+               p.volume_before, p.volume_after, p.earnings_effect, p.price_reflection, p.missing_data
+        FROM news_impacts p
+        JOIN news_items n ON n.id = p.news_id
+        JOIN instruments i ON i.id = p.instrument_id
+        ORDER BY p.id DESC
+        LIMIT 6
+        """
+    ).fetchall()
+    if not rows:
+        return ["مقایسه خبر با قیمت: هنوز پنجره قیمت قبل و بعد برای یک خبر نماددار ذخیره نشده است."]
+    lines = ["مقایسه خبر ذخیره‌شده با قیمت ذخیره‌شده:"]
+    for row in rows:
+        lines.append(f"- {row['symbol']}: {row['title']}")
+        lines.append(
+            f"  قیمت قبل {row['price_before'] or 'نیست'}، بعد {row['price_after'] or 'نیست'}، "
+            f"تغییر {row['price_change_pct'] or 'محاسبه نشد'} درصد"
+        )
+        lines.append(f"  حجم قبل {row['volume_before'] or 'نیست'}، بعد {row['volume_after'] or 'نیست'}")
+        lines.append(f"  {row['price_reflection']}")
+        lines.append(f"  {row['earnings_effect']}")
+        lines.append(f"  کمبود داده: {row['missing_data']}")
+    return lines
 
 
 def _capabilities(conn: sqlite3.Connection) -> list[str]:

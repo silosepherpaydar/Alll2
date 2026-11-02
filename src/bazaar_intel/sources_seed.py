@@ -245,6 +245,16 @@ SEED_SOURCES: list[dict] = [
         "notes": "جایگزین TSETMC نیست. هر عدد با کلید و زمان خام همان منبع ذخیره می‌شود.",
     },
     {
+        "source_key": "sahamyab",
+        "name": "سهامیاب",
+        "url": "https://www.sahamyab.com",
+        "group_name": "discovered",
+        "specialty": "مسیر جایگزین برای جستجوی نماد و عنوان اطلاعیه‌هایی که پیوند codal.ir دارند",
+        "prior_level": "B",
+        "prior_basis": PRIOR,
+        "notes": "جایگزین خود کدال و TSETMC نیست. عنوان و پیوند از API عمومی همین سایت خوانده می‌شود و متن نامه جداگانه از codal.ir گرفته می‌شود فقط اگر آن میزبان جواب بدهد.",
+    },
+    {
         "source_key": "shakhesban",
         "name": "شاخص‌بان",
         "url": "https://www.shakhesban.com",

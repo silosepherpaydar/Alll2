@@ -103,6 +103,40 @@ def jalali_label(moment: datetime | None = None) -> str:
     return f"{jy:04d}/{jm:02d}/{jd:02d}"
 
 
+def jalali_datetime_to_utc(text: str) -> str | None:
+    """تاریخ و ساعت شمسی را به‌عنوان ساعت تهران تفسیر می‌کند.
+
+    کدال و چند تابلو ساعت را بدون منطقه می‌نویسند. این تابع فقط وقتی استفاده می‌شود
+    که خود منبع ساعت را در تقویم ایران منتشر کرده باشد.
+    """
+    digits = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+    raw = " ".join(text.translate(digits).strip().replace("-", "/").split())
+    parts = raw.split(" ")
+    if not parts:
+        return None
+    date_bits = parts[0].split("/")
+    if len(date_bits) != 3:
+        return None
+    hour = 0
+    minute = 0
+    if len(parts) > 1 and ":" in parts[1]:
+        clock = parts[1].split(":")
+        if len(clock) < 2:
+            return None
+        try:
+            hour = int(clock[0])
+            minute = int(clock[1])
+        except ValueError:
+            return None
+    try:
+        jy, jm, jd = (int(bit) for bit in date_bits)
+        gy, gm, gd = jalali_to_gregorian(jy, jm, jd)
+        local = datetime(gy, gm, gd, hour, minute, tzinfo=TEHRAN)
+    except (ValueError, OverflowError):
+        return None
+    return local.astimezone(timezone.utc).replace(microsecond=0).isoformat()
+
+
 def jalali_date_to_tehran_midnight_utc(text: str) -> str | None:
     """تاریخ شمسی را به نیمه‌شب تهران همان روز وصل می‌کند و این قرارداد را برمی‌گرداند."""
     raw = text.strip().replace("-", "/")

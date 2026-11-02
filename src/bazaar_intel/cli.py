@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from bazaar_intel.config import DEFAULT_DB
-from bazaar_intel.cycle import run_cycle
+from bazaar_intel.cycle import CycleBusy, run_cycle
 from bazaar_intel.db import init_db
 from bazaar_intel.ledger import LedgerError, evaluate_due, register_prediction
 from bazaar_intel.schedule import next_slot, run_forever
@@ -19,15 +19,16 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("init")
     cycle = sub.add_parser("cycle")
-    cycle.add_argument("--session", choices=("preopen", "close", "pilot"), default="pilot")
+    cycle.add_argument("--session", choices=("preopen", "close", "pilot", "phase2"), default="pilot")
     cycle.add_argument("--skip-probe", action="store_true")
 
     report = sub.add_parser("report")
-    report.add_argument("--session", choices=("preopen", "close", "pilot"), default="pilot")
+    report.add_argument("--session", choices=("preopen", "close", "pilot", "phase2"), default="pilot")
 
     sub.add_parser("evaluate")
     sub.add_parser("schedule")
     sub.add_parser("status")
+    sub.add_parser("install-service")
 
     predict = sub.add_parser("predict")
     predict.add_argument("--instrument-id", type=int, required=True)
@@ -54,7 +55,11 @@ def main(argv: list[str] | None = None) -> int:
         print(db_path)
         return 0
     if args.command == "cycle":
-        _conn, path = run_cycle(db_path, session=args.session, do_probe=not args.skip_probe)
+        try:
+            _conn, path = run_cycle(db_path, session=args.session, do_probe=not args.skip_probe)
+        except CycleBusy as exc:
+            print(str(exc))
+            return 0
         print(path)
         return 0
     if args.command == "report":
@@ -80,6 +85,11 @@ def main(argv: list[str] | None = None) -> int:
             print(path)
 
         run_forever(_fire)
+        return 0
+    if args.command == "install-service":
+        from bazaar_intel.service import install_service
+
+        print(install_service())
         return 0
     if args.command == "status":
         conn = init_db(db_path)

@@ -343,5 +343,153 @@ class LedgerTests(unittest.TestCase):
         return public_id
 
 
+class Phase2Tests(unittest.TestCase):
+    def test_jalali_clock_is_tehran(self):
+        from bazaar_intel.timeutil import jalali_datetime_to_utc
+
+        self.assertEqual(jalali_datetime_to_utc("1405/08/11 10:09"), "2026-11-02T06:39:00+00:00")
+
+    def test_sitemap_classifies_calls_puts_and_funds(self):
+        from bazaar_intel.universe import parse_shakhesban_sitemap
+
+        xml = """
+        <urlset>
+          <url><loc>https://www.shakhesban.com/markets/stock/%D9%88%D8%A8%D9%85%D9%84%D8%AA</loc><lastmod>2026-11-02T04:49:56Z</lastmod></url>
+          <url><loc>https://www.shakhesban.com/markets/option/%D8%B7%D9%85%D9%84%D8%AA</loc><lastmod>2026-11-02T01:00:00Z</lastmod></url>
+          <url><loc>https://www.shakhesban.com/markets/option/%D8%B6%D9%85%D9%84%D8%AA</loc></url>
+          <url><loc>https://www.shakhesban.com/markets/fund/%D8%B5%D8%A7%DB%8C%D9%86%D8%AF</loc></url>
+          <url><loc>https://www.shakhesban.com/markets/future/SILOR02</loc></url>
+          <url><loc>https://www.shakhesban.com/markets/all</loc></url>
+        </urlset>
+        """
+        fresh, items = parse_shakhesban_sitemap(xml)
+        self.assertEqual(fresh, "2026-11-02T04:49:56Z")
+        by_symbol = {item["symbol"]: item for item in items}
+        self.assertEqual(set(by_symbol), {"وبملت", "طملت", "ضملت", "صایند", "SILOR02"})
+        self.assertEqual(by_symbol["طملت"]["option_type"], "call")
+        self.assertEqual(by_symbol["ضملت"]["option_type"], "put")
+        self.assertEqual(by_symbol["صایند"]["asset_class"], "fund")
+        self.assertEqual(by_symbol["SILOR02"]["asset_class"], "futures")
+
+    def test_symbol_snapshot_refuses_a_shifted_table(self):
+        from bazaar_intel.universe import parse_symbol_snapshot
+
+        html = "<table><tr><td>بازگشایی</td><td>26,890</td><td>پایانی</td><td>27,420</td><td>530</td><td>بیشترین</td><td>27,690</td><td>کمترین</td><td>26,500</td><td>حجم</td><td>202.305</td><td>میلیون</td></tr><tr><td>تحقق سود</td><td>504</td><td>P/E TTM</td><td>13.200</td></tr></table>"
+        parsed = parse_symbol_snapshot(html)
+        self.assertTrue(parsed["parsed"])
+        self.assertEqual(parsed["close"], "27420")
+        self.assertEqual(parsed["profit_raw"], "504")
+        self.assertFalse(parse_symbol_snapshot("<table><td>فقط نام</td></table>")["parsed"])
+
+    def test_codal_relay_keeps_only_real_links(self):
+        from bazaar_intel.connectors import parse_sahamyab_codal
+
+        items = parse_sahamyab_codal(
+            {
+                "result": [
+                    {
+                        "title": "صورت‌های مالی",
+                        "url": "https://www.codal.ir/Reports/Decision.aspx?LetterSerial=abc",
+                        "namad": "وبملت",
+                        "publishDate": "1405/08/11 10:09",
+                        "corp": "بانک ملت",
+                    },
+                    {"title": "بدون پیوند", "url": "", "namad": "فملی"},
+                ]
+            }
+        )
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["symbol"], "وبملت")
+
+    def test_telegram_handle_stays_on_public_preview(self):
+        from bazaar_intel.telegram_watch import preview_url, safe_handle
+
+        self.assertIsNone(safe_handle("joinchat"))
+        self.assertIsNone(safe_handle("../etc"))
+        self.assertEqual(preview_url("feghtesad", "38121"), "https://t.me/s/feghtesad?before=38121")
+        with self.assertRaises(ValueError):
+            preview_url("feghtesad", "http://evil")
+
+    def test_unspecified_listing_merges_when_venue_arrives(self):
+        from bazaar_intel.ingest import _upsert_instrument
+
+        with tempfile.TemporaryDirectory() as folder:
+            conn = init_db(Path(folder) / "t.sqlite")
+            first = _upsert_instrument(
+                conn,
+                symbol="وبملت",
+                market="unspecified",
+                asset_class="equity",
+                option_type=None,
+                source_note="sitemap",
+            )
+            second = _upsert_instrument(
+                conn,
+                symbol="وبملت",
+                market="tse",
+                asset_class="equity",
+                venue="بورس",
+                source_note="board",
+            )
+            self.assertEqual(first, second)
+            row = conn.execute("SELECT market, venue FROM instruments WHERE id = ?", (first,)).fetchone()
+            self.assertEqual(row["market"], "tse")
+            self.assertEqual(row["venue"], "بورس")
+
+    def test_news_impact_uses_only_stored_prices(self):
+        from bazaar_intel.analysis import refresh_impacts
+
+        with tempfile.TemporaryDirectory() as folder:
+            conn = init_db(Path(folder) / "t.sqlite")
+            now = utc_now()
+            conn.execute(
+                """
+                INSERT INTO instruments(
+                  symbol, name, market, asset_class, listing_complete, source_note, first_seen_at, last_seen_at
+                ) VALUES('وبملت', 'بانک ملت', 'tse', 'equity', 0, 'fixture', ?, ?)
+                """,
+                (iso_utc(now), iso_utc(now)),
+            )
+            instrument = conn.execute("SELECT id FROM instruments").fetchone()["id"]
+            source = conn.execute("SELECT id FROM sources WHERE source_key = 'sahamyab'").fetchone()["id"]
+            published = iso_utc(now)
+            conn.execute(
+                """
+                INSERT INTO news_items(
+                  source_id, title, body, published_at, published_at_raw, fetched_at, content_hash,
+                  fingerprint, verification_class, confidence, relevance
+                ) VALUES (?, 'افزایش سرمایه', 'نماد کدال', ?, '1405/08/11 10:09', ?, 'hash', 'fp',
+                         'relayed_official', 'low', 'market')
+                """,
+                (source, published, iso_utc(now)),
+            )
+            news_id = conn.execute("SELECT id FROM news_items").fetchone()["id"]
+            conn.execute(
+                "INSERT INTO news_mentions(news_id, token, instrument_id, created_at) VALUES (?, 'وبملت', ?, ?)",
+                (news_id, instrument, iso_utc(now)),
+            )
+            before = iso_utc(now - timedelta(hours=2))
+            after = iso_utc(now + timedelta(hours=2))
+            for stamp, price, volume in ((before, "1000", "10"), (after, "1004", "12")):
+                conn.execute(
+                    """
+                    INSERT INTO quotes(
+                      instrument_id, observed_at, observed_at_raw, timezone_note, price, volume,
+                      source_label, quality, raw_json
+                    ) VALUES (?, ?, ?, 'fixture', ?, ?, 'fixture', 'as_provided', '{}')
+                    """,
+                    (instrument, stamp, stamp, price, volume),
+                )
+            self.assertEqual(refresh_impacts(conn), 1)
+            impact = conn.execute("SELECT price_change_pct, volume_before, volume_after, earnings_effect FROM news_impacts").fetchone()
+            self.assertEqual(impact["price_change_pct"], "0.4000")
+            self.assertEqual(impact["volume_before"], "10")
+            self.assertEqual(impact["volume_after"], "12")
+            self.assertIn("محاسبه نشد", impact["earnings_effect"])
+            opportunity = conn.execute("SELECT score_total, prediction_public_id FROM opportunities").fetchone()
+            self.assertLess(opportunity["score_total"], 40)
+            self.assertIsNone(opportunity["prediction_public_id"])
+
+
 if __name__ == "__main__":
     unittest.main()
