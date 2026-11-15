@@ -175,7 +175,47 @@ def render_caption(text: str, dest: Path) -> None:
     image.save(dest)
 
 
-def render_thumbnail(background: Path, headline: str, dest: Path) -> None:
+def find_portrait(project: Path, plan: dict) -> Path | None:
+    named = plan.get("portrait")
+    candidates = []
+    if named:
+        path = Path(named)
+        candidates.append(path if path.is_absolute() else project / path)
+    candidates.extend(
+        [
+            Path.cwd() / "me" / "portrait.jpg",
+            project.parent.parent / "me" / "portrait.jpg",
+            project / "portrait.jpg",
+        ]
+    )
+    for candidate in candidates:
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            return candidate
+    return None
+
+
+def rounded_portrait(path: Path, box_w: int, box_h: int):
+    from PIL import Image, ImageDraw, ImageOps
+
+    source = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+    scale = max(box_w / source.width, box_h / source.height)
+    resized = source.resize(
+        (max(box_w, int(source.width * scale)), max(box_h, int(source.height * scale))),
+        Image.Resampling.LANCZOS,
+    )
+    left = max(0, (resized.width - box_w) // 2)
+    top = max(0, (resized.height - box_h) // 2 - int(resized.height * 0.04))
+    if top + box_h > resized.height:
+        top = resized.height - box_h
+    cropped = resized.crop((left, top, left + box_w, top + box_h))
+    mask = Image.new("L", (box_w, box_h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((1, 1, box_w - 2, box_h - 2), radius=40, fill=255)
+    portrait = cropped.convert("RGBA")
+    portrait.putalpha(mask)
+    return portrait
+
+
+def render_thumbnail(background: Path, headline: str, dest: Path, portrait: Path | None = None) -> None:
     from PIL import Image, ImageDraw, ImageEnhance, ImageFont
 
     image = Image.open(background).convert("RGB")
@@ -183,18 +223,39 @@ def render_thumbnail(background: Path, headline: str, dest: Path) -> None:
     image = image.resize((FRAME_W, FRAME_H))
     overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
-    font = ImageFont.truetype(font_path(), 86)
-    shaped = shape(headline)
-    box = draw.textbbox((0, 0), shaped, font=font)
-    text_w, text_h = box[2] - box[0], box[3] - box[1]
-    x = (FRAME_W - text_w) / 2
-    y = (FRAME_H - text_h) / 2 - 20
+    text_right = FRAME_W - 70
+    if portrait is not None:
+        box_w, box_h = 470, 600
+        face = rounded_portrait(portrait, box_w, box_h)
+        face_x = 56
+        face_y = (FRAME_H - box_h) // 2
+        overlay.paste(face, (face_x, face_y), face)
+        draw.rounded_rectangle(
+            (face_x - 6, face_y - 6, face_x + box_w + 6, face_y + box_h + 6),
+            radius=46,
+            outline=(255, 246, 220, 230),
+            width=6,
+        )
+        text_left = face_x + box_w + 48
+    else:
+        text_left = 70
+    font = ImageFont.truetype(font_path(), 78 if portrait is None else 68)
+    lines = wrap_lines(headline, draw, font, text_right - text_left)
+    shaped = [shape(line) for line in lines]
+    heights = [draw.textbbox((0, 0), line, font=font)[3] for line in shaped]
+    block_h = sum(heights) + 10 * (len(shaped) - 1)
+    y = (FRAME_H - block_h) / 2
+    widest = max(draw.textbbox((0, 0), line, font=font)[2] for line in shaped)
+    band_left = text_left - 28
+    band_right = min(text_right + 28, text_left + widest + 28)
     draw.rounded_rectangle(
-        (x - 36, y - 24, x + text_w + 36, y + text_h + 28),
+        (band_left, y - 24, band_right, y + block_h + 28),
         radius=22,
         fill=(0, 0, 0, 160),
     )
-    draw.text((x, y), shaped, font=font, fill=(255, 246, 220, 255))
+    for line, height in zip(shaped, heights):
+        draw.text((text_left, y), line, font=font, fill=(255, 246, 220, 255))
+        y += height + 10
     image.paste(overlay, mask=overlay.split()[-1])
     image.save(dest, quality=92)
 
@@ -322,7 +383,12 @@ def build(project: Path) -> None:
     thumb_src = pictures / "thumb-src.jpg"
     if not thumb_src.exists():
         fetch_image(plan["thumbnail_prompt"], thumb_src, seed=7)
-    render_thumbnail(thumb_src, plan["headline"], project / "thumbnail.jpg")
+    render_thumbnail(
+        thumb_src,
+        plan["headline"],
+        project / "thumbnail.jpg",
+        find_portrait(project, plan),
+    )
     script = project / "script.md"
     script.write_text(
         "# " + plan["headline"] + "\n\n" + "\n\n".join(f"- {shot['line']}" for shot in shots) + "\n",

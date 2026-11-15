@@ -25,7 +25,7 @@ Default: four shots, 16:9. If they name a count, use that, with a cap of six. Mo
 
 If they say they will film or record themselves, still build the silent pictures and the script, and skip the generated voice. Set no `voice` job: write the shot list and stop before `build_free_video.py`.
 
-Never invent their face. Do not put a real person in a picture unless they supplied a photo, and this free builder does not composite a face photo. Leave people out of the pictures.
+Leave people out of the generated pictures. If `me/portrait.jpg` exists, or `plan.json` has a `portrait` path, the thumbnail places that real photograph on the frame. Never upload that photo to Pollinations and never ask an image model to redraw the face.
 
 ## Steps
 
