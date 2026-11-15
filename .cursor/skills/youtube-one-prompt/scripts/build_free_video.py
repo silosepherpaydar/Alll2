@@ -1,0 +1,344 @@
+#!/usr/bin/env python3
+"""Build a narrated video from plan.json with free tools only.
+
+Pictures come from the public Pollinations image endpoint (no key).
+Speech comes from the free Microsoft neural voices via edge-tts.
+ffmpeg moves the camera across each still and joins the clips.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import importlib
+import json
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+IMAGE_ENDPOINT = "https://image.pollinations.ai/prompt/"
+FRAME_W, FRAME_H = 1280, 720
+FPS = 24
+FONT_CANDIDATES = [
+    "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf",
+    "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+]
+
+
+def ensure_packages() -> None:
+    missing = []
+    for module, package in (
+        ("edge_tts", "edge-tts"),
+        ("PIL", "pillow"),
+        ("arabic_reshaper", "arabic-reshaper"),
+        ("bidi", "python-bidi"),
+    ):
+        try:
+            importlib.import_module(module)
+        except ImportError:
+            missing.append(package)
+    if missing:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", *missing])
+
+
+def font_path() -> str:
+    for candidate in FONT_CANDIDATES:
+        if Path(candidate).is_file():
+            return candidate
+    raise SystemExit("No usable font found for captions.")
+
+
+def has_arabic(text: str) -> bool:
+    return any("\u0600" <= char <= "\u06ff" for char in text)
+
+
+def shape(text: str) -> str:
+    if not has_arabic(text):
+        return text
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+
+    return get_display(arabic_reshaper.reshape(text))
+
+
+def run(cmd: list[str]) -> None:
+    if cmd and cmd[0] == "ffmpeg":
+        cmd = [cmd[0], "-hide_banner", "-loglevel", "error", *cmd[1:]]
+    subprocess.run(cmd, check=True)
+
+
+def needs_file(path: Path) -> bool:
+    return (not path.exists()) or path.stat().st_size == 0
+
+
+def probe_duration(path: Path) -> float:
+    out = subprocess.check_output(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nw=1:nk=1",
+            str(path),
+        ],
+        text=True,
+    )
+    return float(out.strip())
+
+
+def fetch_image(prompt: str, dest: Path, seed: int) -> None:
+    query = urllib.parse.urlencode(
+        {"width": FRAME_W, "height": FRAME_H, "seed": seed, "nofeed": "true"}
+    )
+    url = IMAGE_ENDPOINT + urllib.parse.quote(prompt, safe="") + "?" + query
+    last_error = "no response"
+    for attempt in range(6):
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "cursor-free-video/1.0"})
+            with urllib.request.urlopen(request, timeout=180) as response:
+                body = response.read()
+                content_type = response.headers.get("Content-Type", "")
+            if body[:2] == b"\xff\xd8" or body[:8] == b"\x89PNG\r\n\x1a\n":
+                dest.write_bytes(body)
+                return
+            last_error = f"not an image ({content_type}, {len(body)} bytes)"
+        except urllib.error.HTTPError as error:
+            last_error = f"HTTP {error.code}"
+            if error.code == 402:
+                wait = int(error.headers.get("Retry-After") or "45")
+                print(f"free image slot busy, waiting {wait}s", flush=True)
+                time.sleep(wait + 1)
+                continue
+        except urllib.error.URLError as error:
+            last_error = str(error.reason)
+        time.sleep(5 + attempt * 3)
+    raise SystemExit(f"Could not download a picture for: {prompt}\n{last_error}")
+
+
+def speak(text: str, dest: Path, voice: str) -> None:
+    import edge_tts
+
+    async def _save() -> None:
+        communicate = edge_tts.Communicate(text, voice)
+        await communicate.save(str(dest))
+
+    asyncio.run(_save())
+
+
+def wrap_lines(text: str, draw, font, max_width: int) -> list[str]:
+    words = text.split()
+    if not words:
+        return []
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        trial = f"{current} {word}"
+        width = draw.textbbox((0, 0), shape(trial), font=font)[2]
+        if width <= max_width:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return lines
+
+
+def render_caption(text: str, dest: Path) -> None:
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGBA", (FRAME_W, FRAME_H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.truetype(font_path(), 42)
+    lines = wrap_lines(text, draw, font, FRAME_W - 160)
+    shaped = [shape(line) for line in lines]
+    heights = [draw.textbbox((0, 0), line, font=font)[3] for line in shaped]
+    block_h = sum(heights) + 8 * (len(shaped) - 1)
+    top = FRAME_H - block_h - 78
+    draw.rounded_rectangle(
+        (70, top - 18, FRAME_W - 70, top + block_h + 18),
+        radius=16,
+        fill=(0, 0, 0, 150),
+    )
+    y = top
+    for line, height in zip(shaped, heights):
+        width = draw.textbbox((0, 0), line, font=font)[2]
+        x = (FRAME_W - width) / 2
+        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+        y += height + 8
+    image.save(dest)
+
+
+def render_thumbnail(background: Path, headline: str, dest: Path) -> None:
+    from PIL import Image, ImageDraw, ImageEnhance, ImageFont
+
+    image = Image.open(background).convert("RGB")
+    image = ImageEnhance.Color(image).enhance(1.15)
+    image = image.resize((FRAME_W, FRAME_H))
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    font = ImageFont.truetype(font_path(), 86)
+    shaped = shape(headline)
+    box = draw.textbbox((0, 0), shaped, font=font)
+    text_w, text_h = box[2] - box[0], box[3] - box[1]
+    x = (FRAME_W - text_w) / 2
+    y = (FRAME_H - text_h) / 2 - 20
+    draw.rounded_rectangle(
+        (x - 36, y - 24, x + text_w + 36, y + text_h + 28),
+        radius=22,
+        fill=(0, 0, 0, 160),
+    )
+    draw.text((x, y), shaped, font=font, fill=(255, 246, 220, 255))
+    image.paste(overlay, mask=overlay.split()[-1])
+    image.save(dest, quality=92)
+
+
+def make_clip(image: Path, audio: Path, caption: Path, dest: Path, zoom_in: bool) -> None:
+    frames = max(int(probe_duration(audio) * FPS), FPS)
+    if zoom_in:
+        zoom = f"min(1+0.0012*on,{1.12})"
+    else:
+        zoom = f"max(1.12-0.0012*on,1)"
+    video_filter = (
+        "scale=1600:900:force_original_aspect_ratio=increase,crop=1600:900,"
+        f"zoompan=z='{zoom}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+        f"d={frames}:s={FRAME_W}x{FRAME_H}:fps={FPS},format=yuv420p[bg];"
+        "[bg][1:v]overlay=0:0:format=auto"
+    )
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-i",
+            str(image),
+            "-loop",
+            "1",
+            "-i",
+            str(caption),
+            "-i",
+            str(audio),
+            "-filter_complex",
+            video_filter,
+            "-map",
+            "2:a",
+            "-t",
+            f"{frames / FPS:.3f}",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-shortest",
+            str(dest),
+        ]
+    )
+
+
+def srt_time(seconds: float) -> str:
+    millis = int(round(seconds * 1000))
+    hours, millis = divmod(millis, 3_600_000)
+    minutes, millis = divmod(millis, 60_000)
+    secs, millis = divmod(millis, 1000)
+    return f"{hours:02}:{minutes:02}:{secs:02},{millis:03}"
+
+
+def write_srt(cues: list[tuple[float, float, str]], dest: Path) -> None:
+    blocks = []
+    for index, (start, end, text) in enumerate(cues, start=1):
+        blocks.append(f"{index}\n{srt_time(start)} --> {srt_time(end)}\n{text}\n")
+    dest.write_text("\n".join(blocks), encoding="utf-8")
+
+
+def build(project: Path) -> None:
+    ensure_packages()
+    plan = json.loads((project / "plan.json").read_text(encoding="utf-8"))
+    shots = plan["shots"]
+    if not shots:
+        raise SystemExit("plan.json needs at least one shot.")
+    voice = plan.get("voice") or (
+        "fa-IR-DilaraNeural" if has_arabic(" ".join(shot["line"] for shot in shots)) else "en-US-AriaNeural"
+    )
+    pictures = project / "pictures"
+    audio_dir = project / "audio"
+    clips = project / "clips"
+    for folder in (pictures, audio_dir, clips):
+        folder.mkdir(parents=True, exist_ok=True)
+
+    cues: list[tuple[float, float, str]] = []
+    cursor = 0.0
+    clip_paths: list[Path] = []
+    for index, shot in enumerate(shots, start=1):
+        stem = f"{index:02}"
+        picture = pictures / f"{stem}.jpg"
+        audio = audio_dir / f"{stem}.mp3"
+        caption = clips / f"{stem}-caption.png"
+        clip = clips / f"{stem}.mp4"
+        print(f"picture {index}/{len(shots)}", flush=True)
+        if needs_file(picture):
+            fetch_image(shot["prompt"], picture, seed=1000 + index)
+        print(f"voice {index}/{len(shots)}", flush=True)
+        if needs_file(audio):
+            speak(shot["line"], audio, voice)
+        render_caption(shot["line"], caption)
+        if not clip.exists():
+            make_clip(picture, audio, caption, clip, zoom_in=index % 2 == 1)
+        length = probe_duration(clip)
+        cues.append((cursor, cursor + length, shot["line"]))
+        cursor += length
+        clip_paths.append(clip)
+
+    concat_list = project / "clips.txt"
+    concat_list.write_text(
+        "".join(f"file '{path.as_posix()}'\n" for path in clip_paths),
+        encoding="utf-8",
+    )
+    video = project / "video.mp4"
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(video),
+        ]
+    )
+    thumb_src = pictures / "thumb-src.jpg"
+    if not thumb_src.exists():
+        fetch_image(plan["thumbnail_prompt"], thumb_src, seed=7)
+    render_thumbnail(thumb_src, plan["headline"], project / "thumbnail.jpg")
+    script = project / "script.md"
+    script.write_text(
+        "# " + plan["headline"] + "\n\n" + "\n\n".join(f"- {shot['line']}" for shot in shots) + "\n",
+        encoding="utf-8",
+    )
+    write_srt(cues, project / "script.srt")
+    docx = Path(__file__).with_name("md_to_docx.py")
+    subprocess.check_call([sys.executable, str(docx), str(script), str(project / "script.docx")])
+    print(f"ready {video}", flush=True)
+
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        raise SystemExit("usage: build_free_video.py PROJECT_DIR")
+    build(Path(sys.argv[1]).resolve())
+
+
+if __name__ == "__main__":
+    main()
