@@ -57,13 +57,17 @@ def has_arabic(text: str) -> bool:
     return any("\u0600" <= char <= "\u06ff" for char in text)
 
 
-def shape(text: str) -> str:
-    if not has_arabic(text):
-        return text
-    import arabic_reshaper
-    from bidi.algorithm import get_display
+def layout_kwargs(text: str, font, anchor: str) -> dict:
+    options = {"font": font, "anchor": anchor}
+    if has_arabic(text):
+        options["direction"] = "rtl"
+        options["language"] = "fa"
+    return options
 
-    return get_display(arabic_reshaper.reshape(text))
+
+def text_size(draw, text: str, font) -> tuple[int, int]:
+    box = draw.textbbox((0, 0), text, **layout_kwargs(text, font, "lt"))
+    return box[2] - box[0], box[3] - box[1]
 
 
 def run(cmd: list[str]) -> None:
@@ -111,8 +115,8 @@ def fetch_image(prompt: str, dest: Path, seed: int) -> None:
             last_error = f"not an image ({content_type}, {len(body)} bytes)"
         except urllib.error.HTTPError as error:
             last_error = f"HTTP {error.code}"
-            if error.code == 402:
-                wait = int(error.headers.get("Retry-After") or "45")
+            if error.code in (402, 429, 503):
+                wait = int(error.headers.get("Retry-After") or "20")
                 print(f"free image slot busy, waiting {wait}s", flush=True)
                 time.sleep(wait + 1)
                 continue
@@ -140,8 +144,7 @@ def wrap_lines(text: str, draw, font, max_width: int) -> list[str]:
     current = words[0]
     for word in words[1:]:
         trial = f"{current} {word}"
-        width = draw.textbbox((0, 0), shape(trial), font=font)[2]
-        if width <= max_width:
+        if text_size(draw, trial, font)[0] <= max_width:
             current = trial
         else:
             lines.append(current)
@@ -155,23 +158,20 @@ def render_caption(text: str, dest: Path) -> None:
 
     image = Image.new("RGBA", (FRAME_W, FRAME_H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    font = ImageFont.truetype(font_path(), 42)
-    lines = wrap_lines(text, draw, font, FRAME_W - 160)
-    shaped = [shape(line) for line in lines]
-    heights = [draw.textbbox((0, 0), line, font=font)[3] for line in shaped]
-    block_h = sum(heights) + 8 * (len(shaped) - 1)
-    top = FRAME_H - block_h - 78
+    font = ImageFont.truetype(font_path(), 40)
+    lines = wrap_lines(text, draw, font, FRAME_W - 180)
+    heights = [text_size(draw, line, font)[1] for line in lines]
+    block_h = sum(heights) + 10 * (len(lines) - 1)
+    top = FRAME_H - block_h - 72
     draw.rounded_rectangle(
-        (70, top - 18, FRAME_W - 70, top + block_h + 18),
-        radius=16,
-        fill=(0, 0, 0, 150),
+        (64, top - 16, FRAME_W - 64, top + block_h + 16),
+        radius=18,
+        fill=(8, 8, 10, 168),
     )
     y = top
-    for line, height in zip(shaped, heights):
-        width = draw.textbbox((0, 0), line, font=font)[2]
-        x = (FRAME_W - width) / 2
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
-        y += height + 8
+    for line, height in zip(lines, heights):
+        draw.text((FRAME_W / 2, y), line, fill=(255, 255, 255, 255), **layout_kwargs(line, font, "ma"))
+        y += height + 10
     image.save(dest)
 
 
@@ -239,23 +239,36 @@ def render_thumbnail(background: Path, headline: str, dest: Path, portrait: Path
         text_left = face_x + box_w + 48
     else:
         text_left = 70
-    font = ImageFont.truetype(font_path(), 78 if portrait is None else 68)
+    font = ImageFont.truetype(font_path(), 72 if portrait is None else 64)
     lines = wrap_lines(headline, draw, font, text_right - text_left)
-    shaped = [shape(line) for line in lines]
-    heights = [draw.textbbox((0, 0), line, font=font)[3] for line in shaped]
-    block_h = sum(heights) + 10 * (len(shaped) - 1)
+    heights = [text_size(draw, line, font)[1] for line in lines]
+    widths = [text_size(draw, line, font)[0] for line in lines]
+    block_h = sum(heights) + 12 * (len(lines) - 1)
     y = (FRAME_H - block_h) / 2
-    widest = max(draw.textbbox((0, 0), line, font=font)[2] for line in shaped)
-    band_left = text_left - 28
-    band_right = min(text_right + 28, text_left + widest + 28)
+    widest = max(widths)
+    if portrait is None:
+        band_left = (FRAME_W - widest) / 2 - 32
+        band_right = (FRAME_W + widest) / 2 + 32
+        anchor_x = FRAME_W / 2
+        anchor = "ma"
+    else:
+        band_right = text_right + 8
+        band_left = band_right - widest - 64
+        anchor_x = text_right
+        anchor = "ra"
     draw.rounded_rectangle(
-        (band_left, y - 24, band_right, y + block_h + 28),
+        (band_left, y - 22, band_right, y + block_h + 26),
         radius=22,
-        fill=(0, 0, 0, 160),
+        fill=(8, 8, 10, 168),
     )
-    for line, height in zip(shaped, heights):
-        draw.text((text_left, y), line, font=font, fill=(255, 246, 220, 255))
-        y += height + 10
+    for line, height in zip(lines, heights):
+        draw.text(
+            (anchor_x, y),
+            line,
+            fill=(255, 246, 220, 255),
+            **layout_kwargs(line, font, anchor),
+        )
+        y += height + 12
     image.paste(overlay, mask=overlay.split()[-1])
     image.save(dest, quality=92)
 
@@ -263,13 +276,17 @@ def render_thumbnail(background: Path, headline: str, dest: Path, portrait: Path
 def make_clip(image: Path, audio: Path, caption: Path, dest: Path, zoom_in: bool) -> None:
     frames = max(int(probe_duration(audio) * FPS), FPS)
     if zoom_in:
-        zoom = f"min(1+0.0012*on,{1.12})"
+        zoom = "min(1+0.00055*on,1.06)"
+        drift = "iw/2-(iw/zoom/2)+on*0.12"
     else:
-        zoom = f"max(1.12-0.0012*on,1)"
+        zoom = "max(1.06-0.00055*on,1)"
+        drift = "iw/2-(iw/zoom/2)-on*0.12"
     video_filter = (
-        "scale=1600:900:force_original_aspect_ratio=increase,crop=1600:900,"
-        f"zoompan=z='{zoom}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-        f"d={frames}:s={FRAME_W}x{FRAME_H}:fps={FPS},format=yuv420p[bg];"
+        "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
+        f"zoompan=z='{zoom}':x='{drift}':y='ih/2-(ih/zoom/2)':"
+        f"d={frames}:s={FRAME_W}x{FRAME_H}:fps={FPS},"
+        "eq=contrast=1.05:saturation=0.9:gamma=0.98,"
+        "vignette=PI/5,format=yuv420p[bg];"
         "[bg][1:v]overlay=0:0:format=auto"
     )
     run(
