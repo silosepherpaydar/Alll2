@@ -33,6 +33,14 @@ python3 assemble.py
 
 Requires `ffmpeg`. Voice-over uses Microsoft Edge neural Persian TTS (`fa-IR-FaridNeural`) with distinct pitch/rate per character. Music/SFX are original synthesized beds.
 
+## Persian text
+
+Subtitles and the brand card are drawn with Noto Naskh from the original Unicode. Do not pass them through arabic-reshaper or python-bidi; that reverses the line.
+
+## Narration pronunciation
+
+The spoken track is not a character-for-character read of the subtitle. A few words were respelt so the Persian voice says them correctly (آرش، سپهر، گفت‌وگو، می‌شه، باقی). Subtitles stay in normal spelling.
+
 ## Technique note
 
 Picture is cinematic 3D keyframe animation with Ken Burns camera moves, graded stills, cross-scene continuity via shared character references, burned-in RTL Persian subtitles, mixed VO + music + SFX, and a final brand card composited with the official logo asset (not AI lettering).

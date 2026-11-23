@@ -6,8 +6,6 @@ import json
 import subprocess
 from pathlib import Path
 
-import arabic_reshaper
-from bidi.algorithm import get_display
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 
 PROD = Path("/agent/repos/Alll2/video-production")
@@ -28,10 +26,6 @@ for d in (OUT, CLIPS, SUBS, PREP):
 def run(cmd: list[str]) -> None:
     print("+", " ".join(str(c) for c in cmd[:12]), ("..." if len(cmd) > 12 else ""))
     subprocess.check_call(cmd)
-
-
-def fa(text: str) -> str:
-    return get_display(arabic_reshaper.reshape(text))
 
 
 def prepare_still(src: Path, dest: Path) -> None:
@@ -131,8 +125,9 @@ def render_subtitle_png(text: str, path: Path, max_width: int = 900) -> None:
     probe = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
 
     def width_of(raw: str) -> int:
-        shaped = fa(raw)
-        bbox = probe.textbbox((0, 0), shaped, font=font)
+        # Noto Naskh + Pillow already shape and order Persian. Do not
+        # reshape or run bidi here — that reverses the line.
+        bbox = probe.textbbox((0, 0), raw, font=font)
         return bbox[2] - bbox[0]
 
     for w in words:
@@ -145,7 +140,7 @@ def render_subtitle_png(text: str, path: Path, max_width: int = 900) -> None:
     if cur:
         raw_lines.append(" ".join(cur))
 
-    lines = [fa(ln) for ln in raw_lines]
+    lines = list(raw_lines)
     line_h = 58
     pad_x, pad_y = 30, 20
     widths = []
