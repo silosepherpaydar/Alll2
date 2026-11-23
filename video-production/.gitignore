@@ -1,0 +1,7 @@
+clips/
+prep/
+out/
+audio/*.wav
+!audio/music_bed.wav
+__pycache__/
+*.pyc
